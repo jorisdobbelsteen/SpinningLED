@@ -1,0 +1,8 @@
+2830-11-1000kv-1.zip from https://grabcad.com/library/2830-11-1000kv-1
+* Motor_2830.stp
+
+basic-608-zz-skateboard-bearing-1.snapshot.1.zip from https://grabcad.com/library/basic-608-zz-skateboard-bearing-1
+* 608 ZZ Skateboard Bearing v4.f3d
+
+12mm-bearing-skf-6201-rs-286-7928.zip from https://grabcad.com/library/12mm-bearing-skf-6201-rs-286-7928
+* 12mm Bearing SKF 6201 (RS 286-7928).STEP

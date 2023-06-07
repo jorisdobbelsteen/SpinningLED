@@ -1,0 +1,23 @@
+%TF.GenerationSoftware,KiCad,Pcbnew,7.0.1*%
+%TF.CreationDate,2023-06-05T22:57:51+02:00*%
+%TF.ProjectId,AxisPCB-STM32F411,41786973-5043-4422-9d53-544d33324634,1*%
+%TF.SameCoordinates,Original*%
+%TF.FileFunction,Profile,NP*%
+%FSLAX46Y46*%
+G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
+G04 Created by KiCad (PCBNEW 7.0.1) date 2023-06-05 22:57:51*
+%MOMM*%
+%LPD*%
+G01*
+G04 APERTURE LIST*
+%TA.AperFunction,Profile*%
+%ADD10C,0.038100*%
+%TD*%
+G04 APERTURE END LIST*
+D10*
+X114300000Y-25400000D02*
+X160020000Y-25400000D01*
+X160020000Y-96901000D01*
+X114300000Y-96901000D01*
+X114300000Y-25400000D01*
+M02*

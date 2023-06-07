@@ -1,0 +1,9 @@
+Manufacturer=Texas Instruments
+PartNumber=TPS51396ARJER
+PartCategory=Integrated Circuit
+PackageCategory=Other
+PinCount=21
+Version=2.3
+Released=2022-09-08 10:18:06
+Downloaded=2023-04-08 16:29:21
+3D=Y
