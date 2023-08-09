@@ -1,0 +1,61 @@
+Errata and Notes for AxisPCB-STM32F411
+
+Revision 1
+==========
+
+Confirmed issues:
+* Errata: D20 is mounted upside down. SMAJ5.0A is unidirectional!
+          There is other ESD protection already, so it can be removed.
+* Errata: D10 (Green Power inidication led) ground not connected
+* Errata: XC6206 3.3V LDO is too small with 200 mA for ESP32. Should replace with at least 600 mA.
+          Workaround is to close JP2 and open JP1 to power WeMos via 5V instead.
+* Errata: C6 should be 0.1uF (datasheet) instead of 4.7uF. This is on SMPS between SW & BST.
+
+* Improvement: Green power led is too bright. Needs higher value resistor.
+               Red (error) & Orange (rotation) are ok.
+               Blue (wifi) to be determinted.
+* Improvement: Add test point to BOOT0, so it can be set to positive rail to recover firmware.
+
+Expected Issues:
+* Errata: From TI WEBENCH Power Designer reference design:
+          https://webench.ti.com/appinfo/webench/scripts/SDP.cgi?ID=F5CDF8D0C4F6D328
+     * Critical:
+???        * L1 should be 3.3 uH (iso 1.5uH). Current rating 15A (iso 10A)
+             Might be hitting saturation and therefore SMPS controller is in fault mode (shutdown).
+???        * Missing Cff of 47pF (parallel to R5).
+    * Major:
+          * R2 at 5k1 to select 600 Hz mode (lowers power consumption for U1 - TPS51396ARJER)
+    * Minor:
+???       * R5 & R6 recommended at 220k & 30k. However 200k & 27k should be fine. Can affect
+            filtering by Cff. To check in WEBENCHER Power Designer.
+    * Improvements:
+          * No issue: SMPS reference has 0603 components, not 0402.
+          * No issue: C3 should be 2x 22uF. Higher level schematic has more caps.
+          * No issue: Add soft start cap around 40 nF (2 ms = 20nF ~ 6 ms 47nF). Or DNP.
+          * Maybe need to look at voltage limits for caps.
+* Review: Power inductor closer to board edge is better for noise.
+* Review: SW trace should be much smaller (as small as possible)
+* Review: Opening in ground at SW plane?
+* Review: Decoupling caps closer to input & outputs
+* Review: Can use stitching via's to couple planes
+* Review: Having analog ground for SMPS can improve performance
+* Review: Put SMD and Through-hole on different sides
+* Review: Too little clearance between C2 and J6 (jtag connector)
+* Improvement: Typical recommendation to have capacitor voltage rating at 2x typical voltage.
+               However, 25% margin also might be OK. Capacitors are derated with voltages closer
+               to their rating.
+* Note: Power dissipation with Vin = 12V
+        * L1 = 3.3uH 8.6mOhm
+          * U1 (TPS51396ARJER) is about 2.5W at 8A; 1.7W at 6.5A.
+          * L1 0.5W at 8A; 0.37W at 6.5A
+        * L1 = 3.3uH 3.3mOhm
+          * U1 (TPS51396ARJER) is about 2.5W at 8A; 1.7W at 6.5A.
+          * L1 0.24W at 8A; 0.16W at 6.5A
+        * L1 = 4.2uH 3.34mOhm
+          * U1 (TPS51396ARJER) is about 2.5W at 8A; 1.7W at 6.5A.
+          * L1 0.22W at 8A; 0.14W at 6.5A
+* Improvement: Should add temperature monitoring as a feature
+* Improvement: PGOOD from SMPS to STM32 to disable LEDs quickly
+* Improvement: Could also have used power planes on the back side for lower inductance power delivery.
+               Especially for 5V that has high current loads.
+
