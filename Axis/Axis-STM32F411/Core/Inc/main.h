@@ -49,6 +49,8 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -57,12 +59,31 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define B1_Pin GPIO_PIN_13
-#define B1_GPIO_Port GPIOC
+#define hLEDS1 hspi4
+#define hLEDS2 hspi1
+#define hLEDS3 hspi2
+#define hLEDS4 hspi3
+#define hTIM_ERROR htim3
+#define TIM_ERROR_CHANNEL_LED TIM_CHANNEL_4
+#define LEDS_X 400
+#define LEDS_Y 52
+#define ROTATION_LED_PULSE_MS 5
+#define hTIM_ROTATION htim1
+#define TIM_ROTATION_CHANNEL_DETECT TIM_CHANNEL_1
+#define TIM_ROTATION_CHANNEL_LED TIM_CHANNEL_2
+#define hTIM_PIXEL htim2
 #define USART_TX_Pin GPIO_PIN_2
 #define USART_TX_GPIO_Port GPIOA
 #define USART_RX_Pin GPIO_PIN_3
 #define USART_RX_GPIO_Port GPIOA
+#define MODEBTN_Pin GPIO_PIN_8
+#define MODEBTN_GPIO_Port GPIOC
+#define ERROR_LED_Pin GPIO_PIN_9
+#define ERROR_LED_GPIO_Port GPIOC
+#define ROTATION_DETECT_Pin GPIO_PIN_8
+#define ROTATION_DETECT_GPIO_Port GPIOA
+#define ROTATION_LED_Pin GPIO_PIN_9
+#define ROTATION_LED_GPIO_Port GPIOA
 #define TMS_Pin GPIO_PIN_13
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14
