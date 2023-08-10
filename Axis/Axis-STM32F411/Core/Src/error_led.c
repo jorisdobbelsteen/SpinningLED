@@ -25,11 +25,11 @@ void error_led_init(void) {
 }
 
 void error_led_set(axis_error_t error) {
-  if (error < 0 || error >= AXIS_ERROR_MAX_VALUE) {
+  if (error >= AXIS_ERROR_MAX_VALUE) {
     error = AXIS_ERROR_FATAL;
   }
   for(size_t i = 0; i < 8; ++i) {
-    unsigned int v = error_sequence_const[error][i];
+    uint16_t v = error_sequence_const[error][i];
     error_led_sequence[i] = v | (v << 8);
   }
 }
