@@ -50,6 +50,9 @@ DMA_HandleTypeDef hdma_tim3_ch4_up;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
+volatile int requested_line;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,6 +74,17 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void Pixel_IRQHandler(void) {
+  // SPI output
+  leds_driver_transmit();
+
+  // Increment current line counter
+  int rl = requested_line + 1;
+  if (rl == LEDS_Y)
+    rl = 0;
+  requested_line = rl;
+}
 
 /* USER CODE END 0 */
 
@@ -123,25 +137,29 @@ int main(void)
                         SystemCoreClock * ROTATION_LED_PULSE_MS / hTIM_ROTATION.Init.Prescaler / 1000);
 
   leds_driver_init();
+
+  // Start pixel timer
+  HAL_TIM_Base_Start_IT(&hTIM_PIXEL);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  uint16_t hue = 0;
-  while (1)
-  {
-    leds_driver_update_hue(hue);
-    hue += 160;
-
-    leds_driver_transmit();
-
+  int current_line = -1;
+  while (1) {
+    // Check if current line has changed. If so, render new color onto it
+    int rl = requested_line;
+    if (rl != current_line) {
+      current_line = rl;
+      uint16_t hue = (HAL_GetTick() * 10) + (current_line * 0x1fff / LEDS_Y);
+      leds_driver_update_hue(hue);
+    } else {
+      __WFE();
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-    HAL_Delay(60);
-
   }
   /* USER CODE END 3 */
 }
@@ -568,7 +586,7 @@ static void MX_SPI5_Init(void)
 
   LL_DMA_SetDataTransferDirection(DMA2, LL_DMA_STREAM_4, LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
 
-  LL_DMA_SetStreamPriorityLevel(DMA2, LL_DMA_STREAM_4, LL_DMA_PRIORITY_HIGH);
+  LL_DMA_SetStreamPriorityLevel(DMA2, LL_DMA_STREAM_4, LL_DMA_PRIORITY_MEDIUM);
 
   LL_DMA_SetMode(DMA2, LL_DMA_STREAM_4, LL_DMA_MODE_NORMAL);
 
@@ -587,7 +605,7 @@ static void MX_SPI5_Init(void)
 
   LL_DMA_SetDataTransferDirection(DMA2, LL_DMA_STREAM_3, LL_DMA_DIRECTION_PERIPH_TO_MEMORY);
 
-  LL_DMA_SetStreamPriorityLevel(DMA2, LL_DMA_STREAM_3, LL_DMA_PRIORITY_HIGH);
+  LL_DMA_SetStreamPriorityLevel(DMA2, LL_DMA_STREAM_3, LL_DMA_PRIORITY_MEDIUM);
 
   LL_DMA_SetMode(DMA2, LL_DMA_STREAM_3, LL_DMA_MODE_NORMAL);
 
@@ -741,9 +759,9 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 30000;
+  htim2.Init.Period = 60000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
@@ -876,13 +894,13 @@ static void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA1_Stream2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 3, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
   /* DMA2_Stream3_IRQn interrupt configuration */
-  NVIC_SetPriority(DMA2_Stream3_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
+  NVIC_SetPriority(DMA2_Stream3_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),2, 0));
   NVIC_EnableIRQ(DMA2_Stream3_IRQn);
   /* DMA2_Stream4_IRQn interrupt configuration */
-  NVIC_SetPriority(DMA2_Stream4_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
+  NVIC_SetPriority(DMA2_Stream4_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),2, 0));
   NVIC_EnableIRQ(DMA2_Stream4_IRQn);
 
 }

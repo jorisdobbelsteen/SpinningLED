@@ -107,7 +107,6 @@ void leds_driver_transmit(void) {
   LL_DMA_SetMemoryAddress(TXDMA(hLEDS4), (uint32_t)&ledbuffer_tx[3][0]);
 #endif
 
-
   LL_DMA_EnableStreamEx(TXDMA(hLEDS1));
   LL_DMA_EnableStreamEx(TXDMA(hLEDS3));
 #if FOUR_CHANNEL

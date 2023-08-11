@@ -46,7 +46,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
-
+void Pixel_IRQHandler(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -220,8 +220,16 @@ void TIM2_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM2_IRQn 0 */
 
+  /* Skip all other timer interrupt flags, they will not be relevant here... */
+  /* TIM Update event */
+  if (__HAL_TIM_GET_FLAG(&htim2, TIM_FLAG_UPDATE) != RESET)
+  {
+    // No need to check whether interrupt is enabled. It will be the case if we are here...
+    __HAL_TIM_CLEAR_IT(&htim2, TIM_IT_UPDATE);
+    Pixel_IRQHandler();
+  }
+
   /* USER CODE END TIM2_IRQn 0 */
-  HAL_TIM_IRQHandler(&htim2);
   /* USER CODE BEGIN TIM2_IRQn 1 */
 
   /* USER CODE END TIM2_IRQn 1 */
