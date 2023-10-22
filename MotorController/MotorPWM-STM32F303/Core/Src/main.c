@@ -22,6 +22,7 @@
 #include "status_led.h"
 #include "motor_control.h"
 #include "rotation_sensor.h"
+#include "PID.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,6 +46,12 @@ typedef enum state_t {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define PULSES_PER_ROTATION 12
+#define ROTATIONS_PER_SEC 15
+#define RAMP_PULSE_PER_SEC (1 * PULSES_PER_ROTATION)
+#define OVERSPEED_PULSES_PER_SEC (7 * PULSES_PER_ROTATION)
+#define UNDERSPEED_PULSES_PER_SEC (7 * PULSES_PER_ROTATION)
+#define STABLE_PULSES_PER_SEC (PULSES_PER_ROTATION / 2)
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -66,6 +73,14 @@ DMA_HandleTypeDef hdma_usart2_tx;
 static state_t global_state;
 static int init_allow_calibration;
 static uint32_t init_enter_tick;
+static PIDController control_pid;
+static volatile unsigned int control_pid_tick_counter;
+static unsigned int control_pid_last_tick_counter;
+static volatile int control_setpoint_millipulsesec;
+static volatile int control_error;
+static volatile int control_stable;
+static int control_setpoint_internal_millipulsesec;
+static int start_stop_stable;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,31 +100,110 @@ static void MX_TIM6_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+static void PID_init(void) {
+  control_pid.Kp =  0.0005f;
+  control_pid.Ki =  0.04f;
+  control_pid.Kd = -0.000f;
+  control_pid.tau = 0.02f;
+  control_pid.limMin = 0.0f;
+  control_pid.limMax = 0.8f;
+  control_pid.limMinInt = -0.1f;
+  control_pid.limMaxInt = 0.7f;
+  control_pid.T = 0.02f;
+
+  PIDController_Init(&control_pid);
+
+  control_error = 0;
+  control_stable = 0;
+  control_setpoint_millipulsesec = 0;
+  control_setpoint_internal_millipulsesec = 0;
+}
+
+static void PID_tick(void) {
+  control_pid_tick_counter++;
+
+  // Load from volatile value
+  int final_setpoint = control_setpoint_millipulsesec;
+
+  // Slowly ramp to final setpoint
+  int setpoint_e = final_setpoint - control_setpoint_internal_millipulsesec;
+  int increment = RAMP_PULSE_PER_SEC * 1000 * control_pid.T;
+  int decrement = -5 * RAMP_PULSE_PER_SEC * 1000 * control_pid.T;
+  if (setpoint_e > increment)
+    setpoint_e = increment;
+  else if (setpoint_e < decrement)
+    setpoint_e = decrement;
+  control_setpoint_internal_millipulsesec += setpoint_e;
+
+  // Acquire current speed
+  int millipulses_per_sec = rotation_sensor_get_millipulses_per_sec();
+
+  // Safety/Sanity check
+  if (millipulses_per_sec > control_setpoint_internal_millipulsesec + OVERSPEED_PULSES_PER_SEC * 1000
+      || millipulses_per_sec + UNDERSPEED_PULSES_PER_SEC * 1000 < control_setpoint_internal_millipulsesec) {
+    control_error = 1;
+    motor_control_set_pulse(MOTOR_PWM_MIN);
+    return;
+  }
+
+  // PID loop
+  float out = PIDController_Update(&control_pid,
+                                   control_setpoint_internal_millipulsesec / (1000.0f * PULSES_PER_ROTATION),
+                                   millipulses_per_sec / (1000.0f * PULSES_PER_ROTATION));
+
+  // Set output
+  motor_control_set_pulse(MOTOR_PWM_MIN + (int)(out * (MOTOR_PWM_MAX - MOTOR_PWM_MIN)));
+
+  // Determine if loop is stable
+  int final_error = millipulses_per_sec - final_setpoint;
+  control_stable = final_error > -STABLE_PULSES_PER_SEC * 1000
+          && final_error < STABLE_PULSES_PER_SEC * 1000;
+}
+
+static void PID_print_stats(void) {
+  unsigned int c = control_pid_tick_counter;
+  if (c - control_pid_last_tick_counter < 4)
+    return;
+  control_pid_last_tick_counter = c;
+
+  printf("%03d  m %2.3f e %2.3f o %1.4f   i %1.4f d %1.4f\n",
+         c % 1000,
+         control_pid.prevMeasurement,
+         control_pid.prevError,
+         control_pid.out,
+         control_pid.integrator,
+         control_pid.differentiator);
+}
+
 static void enter_state(state_t state) {
   switch (state) {
     case STATE_ERROR:
       status_led_set(STATUS_LED_MODE_ERROR);
-      puts("ERROR\r\n");
+      puts("ERROR");
       motor_control_stop();
       break;
     case STATE_INIT:
       status_led_set(STATUS_LED_MODE_INIT);
-      puts("INIT\r\n");
+      puts("INIT");
       init_enter_tick = HAL_GetTick();
       break;
     case STATE_CALIBRATION:
       status_led_set(STATUS_LED_MODE_THROTTLE_CALIB);
-      puts("CALIBRATE\r\n");
+      puts("CALIBRATE");
       motor_control_start(MOTOR_PWM_MAX); // Set to maximum speed
       break;
     case STATE_STOP:
       status_led_set(STATUS_LED_MODE_STOPPING);
-      puts("STOP\r\n");
+      puts("STOP");
+      start_stop_stable = 0;
       motor_control_start(MOTOR_PWM_MIN); // Set to minimum speed
       break;
     case STATE_START:
       status_led_set(STATUS_LED_MODE_STARTING);
-      puts("START\r\n");
+      puts("START");
+      start_stop_stable = 0;
+      PID_init();
+      control_setpoint_millipulsesec = ROTATIONS_PER_SEC * PULSES_PER_ROTATION * 1000;
       motor_control_start_update_interrupt();
       break;
     // NOTE: Rely on compiler to give warning when this is incomplete
@@ -119,6 +213,7 @@ static void enter_state(state_t state) {
 static void exit_state(state_t state) {
   switch (state) {
     case STATE_ERROR:
+      rotation_sensor_reset();
       break;
     case STATE_INIT:
       init_allow_calibration = 0;
@@ -175,7 +270,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim == &MotorTimer) {
     if (global_state == STATE_START) { // sanity check if we really should run the PWM
-
+      if (control_error != 0) {
+        motor_control_set_pulse(MOTOR_PWM_MIN);
+        control_error++;
+      } else {
+        PID_tick();
+      }
     } else {
       Error_Handler();
     }
@@ -193,7 +293,8 @@ void HAL_TIMEx_BreakCallback(TIM_HandleTypeDef *htim) {
 static void loop(void) {
   // Check motor state...
   if (motor_control_get_state() == MOTOR_CONTROL_BREAK) {
-      set_state(STATE_ERROR);
+    puts("Motor BREAK detected");
+    set_state(STATE_ERROR);
   }
 
   buttons_check();
@@ -212,8 +313,24 @@ static void loop(void) {
         set_state(STATE_STOP);
       }
       break;
-    case STATE_STOP:
-    case STATE_START:
+    case STATE_STOP: {
+      const int stable = rotation_sensor_get_millipulses_per_sec() <= 333; // no pulse for 3 seconds
+      if (stable != start_stop_stable) {
+        status_led_set(stable ? STATUS_LED_MODE_STOPPED : STATUS_LED_MODE_STOPPING);
+        start_stop_stable = stable;
+      }
+    } break;
+    case STATE_START: {
+      const int stable = control_stable;
+      if (control_error > 5) { // give several pulses to allow setting PWM to minimum
+        puts("Control ERROR detected");
+        set_state(STATE_ERROR);
+      } else  if (stable != start_stop_stable) {
+        status_led_set(stable ? STATUS_LED_MODE_STARTED : STATUS_LED_MODE_STARTING);
+        start_stop_stable = stable;
+      }
+      PID_print_stats();
+    } break;
     default:
       break;
   }
@@ -270,6 +387,8 @@ int main(void)
   MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
 
+  PID_init();
+
   buttons_init();
   status_led_init();
   motor_control_init();
@@ -280,14 +399,8 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  int speed_rpm = 15;
-  int speed = speed_rpm * PULSES_PER_ROTATION;
-
   global_state = STATE_INIT;
   enter_state(global_state);
-
-  int count = 0;
-  int count2 = 0;
 
   while (1)
   {
@@ -295,17 +408,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//    if (++count == 100) {
-//      count = 0;
-//      uint16_t counter = __HAL_TIM_GET_COUNTER(&RotationCounterTimer);
-//      uint32_t half = __HAL_TIM_GET_COMPARE(&RotationCaptureTimer, ROTATION_CAPTURE_HALF_CHANNEL);
-//      uint32_t full = __HAL_TIM_GET_COMPARE(&RotationCaptureTimer, ROTATION_CAPTURE_FULL_CHANNEL);
-//      if (++count2 == 100) count2 = 0;
-//      printf("Stats counter=%8d pulse=[%8lu,%8lu] %2d\r\n", (int)counter, half, full, count2);
-//    }
 
     HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-
     __WFE();
   }
   /* USER CODE END 3 */
@@ -624,7 +728,7 @@ static void MX_TIM17_Init(void)
   sBreakDeadTimeConfig.DeadTime = 0;
   sBreakDeadTimeConfig.BreakState = TIM_BREAK_ENABLE;
   sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.BreakFilter = 0;
+  sBreakDeadTimeConfig.BreakFilter = 15;
   sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
   if (HAL_TIMEx_ConfigBreakDeadTime(&htim17, &sBreakDeadTimeConfig) != HAL_OK)
   {

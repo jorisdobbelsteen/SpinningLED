@@ -87,7 +87,7 @@ int _write(int file, char *ptr, int len)
 //    //HAL_Delay(0);  // wait briefly. This is busy waiting, so we can also skip this...
 //  }
   // Use normal blocking loop as otherwise buffer management is a mess...
-  while (HAL_UART_Transmit(&huart2, (const uint8_t*)ptr, len, 100) == HAL_BUSY) {
+  while ((ret = HAL_UART_Transmit(&huart2, (const uint8_t*)ptr, len, 100)) == HAL_BUSY) {
 
   }
   return (ret == HAL_OK) ? len : -1;
