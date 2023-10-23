@@ -47,10 +47,11 @@ typedef enum state_t {
 /* USER CODE BEGIN PD */
 #define PULSES_PER_ROTATION 12
 #define ROTATIONS_PER_SEC 15
-#define RAMP_PULSE_PER_SEC (1 * PULSES_PER_ROTATION)
-#define OVERSPEED_PULSES_PER_SEC (7 * PULSES_PER_ROTATION)
-#define UNDERSPEED_PULSES_PER_SEC (7 * PULSES_PER_ROTATION)
+#define RAMP_PULSE_PER_SEC (PULSES_PER_ROTATION * 2 / 2)
+#define OVERSPEED_PULSES_PER_SEC (10 * PULSES_PER_ROTATION)
+#define UNDERSPEED_PULSES_PER_SEC (10 * PULSES_PER_ROTATION)
 #define STABLE_PULSES_PER_SEC (PULSES_PER_ROTATION / 2)
+#define PID_PRESCALER 4
 
 /* USER CODE END PD */
 
@@ -79,7 +80,9 @@ static unsigned int control_pid_last_tick_counter;
 static volatile int control_setpoint_millipulsesec;
 static volatile int control_error;
 static volatile int control_stable;
+static int control_last_pulse_count;
 static int control_setpoint_internal_millipulsesec;
+static int control_prescaler_pid;
 static int start_stop_stable;
 /* USER CODE END PV */
 
@@ -101,15 +104,15 @@ static void MX_TIM6_Init(void);
 /* USER CODE BEGIN 0 */
 
 static void PID_init(void) {
-  control_pid.Kp =  0.0005f;
-  control_pid.Ki =  0.04f;
-  control_pid.Kd = -0.000f;
-  control_pid.tau = 0.02f;
+  control_pid.Kp = 0.010f;
+  control_pid.Ki = 0.007f;
+  control_pid.Kd = 0.001f;
+  control_pid.tau = 0.4f;              // derivative filter time constant
   control_pid.limMin = 0.0f;
-  control_pid.limMax = 0.8f;
+  control_pid.limMax = 0.7f;           // cap of output power
   control_pid.limMinInt = -0.1f;
-  control_pid.limMaxInt = 0.7f;
-  control_pid.T = 0.02f;
+  control_pid.limMaxInt = 0.5f;
+  control_pid.T = 0.02f * PID_PRESCALER;
 
   PIDController_Init(&control_pid);
 
@@ -137,6 +140,21 @@ static void PID_tick(void) {
 
   // Acquire current speed
   int millipulses_per_sec = rotation_sensor_get_millipulses_per_sec();
+  // Derive from measured ticks
+  //
+  // Unless the PULSES_PER_ROTATION or measurement period is large enough, this is rather inaccurate...
+  // For PULSES_PER_ROTATION 12:
+  //   15 rpm -> 180 ticks / sec = 3.6 ticks / 20 ms     -> 3 ~ 4 ticks gives 12.5 ~ 16.6 rpm
+  //                             = 14,4 ticks / 80 ms   -> 14 ~ 15 ticks gives 14.6 ~ 16.6 rpm
+  // To calculate
+  //   1 tick / t ms / x ticks/rotation = 0.1 rps ->
+  //   1 / t / 0.1 = x                            -> x = 10 / t
+  //   * 20 ms --> 500 ticks / rotation
+  //   * 80 ms --> 125 ticks / rotation
+//  uint_rotation_t pc = rotation_sensor_get_counter();
+//  uint_rotation_t delta_pulse = pc - control_last_pulse_count;
+//  control_last_pulse_count = pc;
+//  int millipulses_per_sec_c = 1000 * pc / control_pid.T;
 
   // Safety/Sanity check
   if (millipulses_per_sec > control_setpoint_internal_millipulsesec + OVERSPEED_PULSES_PER_SEC * 1000
@@ -162,7 +180,7 @@ static void PID_tick(void) {
 
 static void PID_print_stats(void) {
   unsigned int c = control_pid_tick_counter;
-  if (c - control_pid_last_tick_counter < 4)
+  if (c == control_pid_last_tick_counter)
     return;
   control_pid_last_tick_counter = c;
 
@@ -204,6 +222,7 @@ static void enter_state(state_t state) {
       start_stop_stable = 0;
       PID_init();
       control_setpoint_millipulsesec = ROTATIONS_PER_SEC * PULSES_PER_ROTATION * 1000;
+      control_last_pulse_count = rotation_sensor_get_counter();
       motor_control_start_update_interrupt();
       break;
     // NOTE: Rely on compiler to give warning when this is incomplete
@@ -274,7 +293,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         motor_control_set_pulse(MOTOR_PWM_MIN);
         control_error++;
       } else {
-        PID_tick();
+        if (++control_prescaler_pid >= PID_PRESCALER) {
+          PID_tick();
+        }
       }
     } else {
       Error_Handler();
