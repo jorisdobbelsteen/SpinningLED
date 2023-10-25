@@ -9,7 +9,7 @@
 
 static uint32_t ledbuffer_tx[4][LEDS_Y + 3];
 static uint32_t ledbuffer_blank_tx[LEDS_Y + 3];
-const uint8_t brightness = 0x30; //0xB0; //0xFF;
+const uint8_t brightness = 0xB0;
 
 static uint32_t HueToRgb(uint8_t h) {
   const unsigned int ha = (unsigned int)h * 6;
@@ -86,6 +86,7 @@ void leds_driver_update_hue(uint16_t hue) {
 }
 
 __STATIC_INLINE void LL_DMA_EnableStreamEx(DMA_TypeDef *DMAx, uint32_t Stream) {
+  // Interrupt clear
   switch (Stream) {
     case LL_DMA_STREAM_0: DMAx->LIFCR = 0x3D << 0; break;
     case LL_DMA_STREAM_1: DMAx->LIFCR = 0x3D << 6; break;
@@ -96,6 +97,7 @@ __STATIC_INLINE void LL_DMA_EnableStreamEx(DMA_TypeDef *DMAx, uint32_t Stream) {
     case LL_DMA_STREAM_6: DMAx->HIFCR = 0x3D << 16; break;
     case LL_DMA_STREAM_7: DMAx->HIFCR = 0x3D << 22; break;
   }
+  // Stream enable
   LL_DMA_EnableStream(DMAx, Stream);
 }
 

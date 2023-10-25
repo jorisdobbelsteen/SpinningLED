@@ -70,27 +70,27 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define hLEDS1_TXDMA_STREAM LL_DMA_STREAM_1
 #define hLEDS4 SPI3
+#define hLEDS3_TXDMA_STREAM LL_DMA_STREAM_4
 #define hLEDS3 SPI2
-#define hLEDS2_TXDMA DMA2
+#define hLEDS4_TXDMA_STREAM LL_DMA_STREAM_5
 #define hLEDS2 SPI1
 #define hLEDS1 SPI4
 #define TIM_ERROR_CHANNEL_LED TIM_CHANNEL_4
-#define hLEDS4_TXDMA_STREAM LL_DMA_STREAM_5
-#define hLEDS3_TXDMA_STREAM LL_DMA_STREAM_4
-#define hLEDS1_TXDMA_STREAM LL_DMA_STREAM_1
-#define hLEDS1_TXDMA DMA2
+#define hLEDS4_TXDMA DMA1
+#define hLEDS2_TXDMA_STREAM LL_DMA_STREAM_2
+#define hLEDS2_TXDMA DMA2
 #define TIM_ROTATION_CHANNEL_LED TIM_CHANNEL_2
 #define hTIM_PIXEL htim2
-#define hLEDS2_TXDMA_STREAM LL_DMA_STREAM_2
+#define hLEDS3_TXDMA DMA1
 #define hTIM_ERROR htim3
 #define TIM_ROTATION_CHANNEL_DETECT TIM_CHANNEL_1
-#define hLEDS4_TXDMA DMA1
+#define hLEDS1_TXDMA DMA2
 #define hTIM_ROTATION htim1
 #define ROTATION_LED_PULSE_MS 5
 #define LEDS_X 400
-#define LEDS_Y 52
-#define hLEDS3_TXDMA DMA1
+#define LEDS_Y 57
 #define USART_TX_Pin GPIO_PIN_2
 #define USART_TX_GPIO_Port GPIOA
 #define USART_RX_Pin GPIO_PIN_3
