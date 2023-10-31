@@ -47,7 +47,7 @@ typedef enum state_t {
 /* USER CODE BEGIN PD */
 #define PULSES_PER_ROTATION 12
 #define ROTATIONS_PER_SEC 15
-#define RAMP_PULSE_PER_SEC (PULSES_PER_ROTATION * 2 / 2)
+#define RAMP_PULSE_PER_SEC (PULSES_PER_ROTATION * 1 / 4)
 #define OVERSPEED_PULSES_PER_SEC (10 * PULSES_PER_ROTATION)
 #define UNDERSPEED_PULSES_PER_SEC (10 * PULSES_PER_ROTATION)
 #define STABLE_PULSES_PER_SEC (PULSES_PER_ROTATION / 2)
@@ -104,14 +104,14 @@ static void MX_TIM6_Init(void);
 /* USER CODE BEGIN 0 */
 
 static void PID_init(void) {
-  control_pid.Kp = 0.010f;
-  control_pid.Ki = 0.007f;
-  control_pid.Kd = 0.001f;
+  control_pid.Kp = 0.060f;
+  control_pid.Ki = 0.006f;
+  control_pid.Kd = 0.003f;
   control_pid.tau = 0.4f;              // derivative filter time constant
   control_pid.limMin = 0.0f;
-  control_pid.limMax = 0.7f;           // cap of output power
+  control_pid.limMax = 0.4f;           // cap of output power
   control_pid.limMinInt = -0.1f;
-  control_pid.limMaxInt = 0.5f;
+  control_pid.limMaxInt = 0.4f;
   control_pid.T = 0.02f * PID_PRESCALER;
 
   PIDController_Init(&control_pid);
