@@ -87,6 +87,19 @@ void Pixel_IRQHandler(void) {
   requested_line = rl;
 }
 
+void Rotation_Detected_IRQHandler(uint16_t value) {
+  // Align value to initial location
+  __HAL_TIM_SET_AUTORELOAD(&hTIM_PIXEL, value);
+  requested_line = 0;
+  leds_driver_set_brightness(BRIGHTNESS_DEFAULT);
+}
+
+void Rotation_None_IRQHandler(void) {
+  // Be dim and slow down
+  __HAL_TIM_SET_AUTORELOAD(&hTIM_PIXEL, 0xffff);
+  leds_driver_set_brightness(BRIGHTNESS_NODETECT);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -133,9 +146,11 @@ int main(void)
 
   error_led_init();
 
+  HAL_TIM_IC_Start(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_DETECT);
   HAL_TIM_PWM_Start(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_LED);
   __HAL_TIM_SET_COMPARE(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_LED,
                         SystemCoreClock * ROTATION_LED_PULSE_MS / hTIM_ROTATION.Init.Prescaler / 1000);
+  HAL_TIM_Base_Start_IT(&hTIM_ROTATION);
 
   leds_driver_init();
 
@@ -153,7 +168,7 @@ int main(void)
     int rl = requested_line;
     if (rl != current_line) {
       current_line = rl;
-      uint16_t hue = (HAL_GetTick() * 10) + (current_line * 0x1fff / LEDS_Y);
+      uint16_t hue = (uint32_t)current_line * 0xffff / LEDS_Y;
       leds_driver_update_hue(hue);
     } else {
       __WFE();
@@ -188,7 +203,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 80;
+  RCC_OscInitStruct.PLL.PLLN = 64;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -784,7 +799,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 0;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 60000;
+  htim2.Init.Period = 60000*5;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -834,7 +849,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 305;
+  htim3.Init.Prescaler = 244;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 65534;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;

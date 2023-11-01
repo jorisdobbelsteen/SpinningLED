@@ -9,6 +9,9 @@
 
 void leds_driver_init(void);
 void leds_driver_transmit(void);
+void leds_driver_transmit_blank(void);
+
 void leds_driver_update_hue(uint16_t hue);
+void leds_driver_set_brightness(uint8_t brightness);
 
 #endif //AXIS_STM32F411_LEDS_DRIVER_H

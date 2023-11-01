@@ -36,17 +36,22 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define TIM_CHANNEL_TO_IFLAG(ch) ((ch) == TIM_CHANNEL_1 ? TIM_FLAG_CC1 : \
+                                  (ch) == TIM_CHANNEL_2 ? TIM_FLAG_CC2 : \
+                                  (ch) == TIM_CHANNEL_3 ? TIM_FLAG_CC3 : \
+                                  TIM_FLAG_CC4)
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
+static int rotation_detected_prev = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
 void Pixel_IRQHandler(void);
+void Rotation_Detected_IRQHandler(uint16_t value);
+void Rotation_None_IRQHandler(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -56,6 +61,7 @@ void Pixel_IRQHandler(void);
 
 /* External variables --------------------------------------------------------*/
 extern DMA_HandleTypeDef hdma_tim3_ch4_up;
+extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim2;
 /* USER CODE BEGIN EV */
 
@@ -211,6 +217,37 @@ void DMA1_Stream2_IRQHandler(void)
   /* USER CODE BEGIN DMA1_Stream2_IRQn 1 */
 
   /* USER CODE END DMA1_Stream2_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM1 update interrupt and TIM10 global interrupt.
+  */
+void TIM1_UP_TIM10_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 0 */
+
+  /* Skip over interrupt flags, as they are not really relevant */
+  if (__HAL_TIM_GET_FLAG(&htim1, TIM_FLAG_UPDATE) != RESET)
+  {
+    // No need to check whether interrupt is enabled. It will be the case if we are here...
+    __HAL_TIM_CLEAR_IT(&htim1, TIM_IT_UPDATE);
+
+    // Check if we detected a capture. If so, indicate this...
+
+    int detected = __HAL_TIM_GET_FLAG(&htim1, TIM_CHANNEL_TO_IFLAG(TIM_ROTATION_CHANNEL_DETECT));
+    __HAL_TIM_CLEAR_IT(&htim1, TIM_CHANNEL_TO_IFLAG(TIM_ROTATION_CHANNEL_DETECT));
+    if (detected && rotation_detected_prev) {
+      Rotation_Detected_IRQHandler(__HAL_TIM_GET_COMPARE(&htim1, TIM_ROTATION_CHANNEL_DETECT));
+    } else {
+      Rotation_None_IRQHandler();
+    }
+    rotation_detected_prev = detected;
+  }
+
+  /* USER CODE END TIM1_UP_TIM10_IRQn 0 */
+  /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 1 */
+
+  /* USER CODE END TIM1_UP_TIM10_IRQn 1 */
 }
 
 /**

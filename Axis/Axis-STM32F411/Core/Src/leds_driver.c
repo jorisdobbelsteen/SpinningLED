@@ -5,11 +5,22 @@
 #include "leds_driver.h"
 #include "main.h"
 
-#define FOUR_CHANNEL 1
+static uint32_t g_ledbuffer_tx[4][LEDS_Y + 3];
+static uint32_t g_ledbuffer_blank_tx[LEDS_Y + 3];
+uint8_t g_brightness = BRIGHTNESS_NODETECT;
 
-static uint32_t ledbuffer_tx[4][LEDS_Y + 3];
-static uint32_t ledbuffer_blank_tx[LEDS_Y + 3];
-const uint8_t brightness = 0xB0;
+static uint32_t PickRgb(uint8_t h) {
+  const unsigned int ha = (unsigned int)h * 3;
+  const unsigned R = 24;
+  const unsigned G = 16;
+  const unsigned B = 8;
+  switch(ha >> 8) {
+    case 0: return (0xFF << R);
+    case 1: return (0xFF << G);
+    case 2: return (0xFF << B);
+    default: return 0;
+  }
+}
 
 static uint32_t HueToRgb(uint8_t h) {
   const unsigned int ha = (unsigned int)h * 6;
@@ -30,32 +41,32 @@ static uint32_t HueToRgb(uint8_t h) {
 }
 
 void leds_driver_init(void) {
-  // Initialize ledbuffer_tx
+  // Initialize g_ledbuffer_tx
   for (size_t s = 0; s < 4; ++s) {
-    ledbuffer_tx[s][0] = 0;
-    ledbuffer_tx[s][LEDS_Y + 1] = 0x010101E0;
-    ledbuffer_tx[s][LEDS_Y + 2] = 0;
+    g_ledbuffer_tx[s][0] = 0;
+    g_ledbuffer_tx[s][LEDS_Y + 1] = 0x010101E0;
+    g_ledbuffer_tx[s][LEDS_Y + 2] = 0;
   }
   leds_driver_update_hue(0);
 
-  // Initialize ledbuffer_blank_tx
-  ledbuffer_blank_tx[0] = 0;
-  ledbuffer_blank_tx[LEDS_Y+1] = 0x010101E0;
-  ledbuffer_blank_tx[LEDS_Y+2] = 0;
+  // Initialize g_ledbuffer_blank_tx
+  g_ledbuffer_blank_tx[0] = 0;
+  g_ledbuffer_blank_tx[LEDS_Y + 1] = 0x010101E0;
+  g_ledbuffer_blank_tx[LEDS_Y + 2] = 0;
   for (size_t i = 0; i < LEDS_Y; ++i) {
-    ledbuffer_blank_tx[i] = 0x000000E1; // pretty much turn off fully...
+    g_ledbuffer_blank_tx[i] = 0x000000E1; // pretty much turn off fully...
   }
 
   // Prepare DMA
   LL_DMA_SetPeriphAddress(TXDMA(hLEDS1), LL_SPI_DMA_GetRegAddr(hLEDS1));
-  LL_DMA_SetDataLength(TXDMA(hLEDS1), sizeof(ledbuffer_blank_tx));
+  LL_DMA_SetDataLength(TXDMA(hLEDS1), sizeof(g_ledbuffer_blank_tx));
   LL_DMA_SetPeriphAddress(TXDMA(hLEDS3), LL_SPI_DMA_GetRegAddr(hLEDS3));
-  LL_DMA_SetDataLength(TXDMA(hLEDS3), sizeof(ledbuffer_blank_tx));
+  LL_DMA_SetDataLength(TXDMA(hLEDS3), sizeof(g_ledbuffer_blank_tx));
 #if FOUR_CHANNEL
   LL_DMA_SetPeriphAddress(TXDMA(hLEDS2), LL_SPI_DMA_GetRegAddr(hLEDS2));
-  LL_DMA_SetDataLength(TXDMA(hLEDS2), sizeof(ledbuffer_blank_tx));
+  LL_DMA_SetDataLength(TXDMA(hLEDS2), sizeof(g_ledbuffer_blank_tx));
   LL_DMA_SetPeriphAddress(TXDMA(hLEDS4), LL_SPI_DMA_GetRegAddr(hLEDS4));
-  LL_DMA_SetDataLength(TXDMA(hLEDS4), sizeof(ledbuffer_blank_tx));
+  LL_DMA_SetDataLength(TXDMA(hLEDS4), sizeof(g_ledbuffer_blank_tx));
 #endif
 
   // Turn on SPI busses and enable the DMA Request Bit
@@ -72,14 +83,17 @@ void leds_driver_init(void) {
 }
 
 void leds_driver_update_hue(uint16_t hue) {
-  const uint32_t LEDBASE = 0x000000E0 | (brightness >> 3);
+  const uint32_t LEDBASE = 0x000000E0 | (g_brightness >> 3);
 
   for (size_t s = 0; s < 4; ++s) {
     uint16_t hx = hue + s * 0x4000;
-    uint32_t* const ledbuffer = &(ledbuffer_tx[s][1]);
+    uint32_t* const ledbuffer = &(g_ledbuffer_tx[s][1]);
 
     for (size_t i = 0; i < LEDS_Y; ++i) {
-      ledbuffer[i] = HueToRgb(hx / 256) | LEDBASE;
+      ledbuffer[i] =
+              //PickRgb
+              HueToRgb
+              (hx / 256) | LEDBASE;
       hx += 48;
     }
   }
@@ -101,12 +115,16 @@ __STATIC_INLINE void LL_DMA_EnableStreamEx(DMA_TypeDef *DMAx, uint32_t Stream) {
   LL_DMA_EnableStream(DMAx, Stream);
 }
 
+void leds_driver_set_brightness(uint8_t brightness) {
+  g_brightness = brightness;
+}
+
 void leds_driver_transmit(void) {
-  LL_DMA_SetMemoryAddress(TXDMA(hLEDS1), (uint32_t)&ledbuffer_tx[0][0]);
-  LL_DMA_SetMemoryAddress(TXDMA(hLEDS3), (uint32_t)&ledbuffer_tx[2][0]);
+  LL_DMA_SetMemoryAddress(TXDMA(hLEDS1), (uint32_t)&g_ledbuffer_tx[0][0]);
+  LL_DMA_SetMemoryAddress(TXDMA(hLEDS3), (uint32_t)&g_ledbuffer_tx[2][0]);
 #if FOUR_CHANNEL
-  LL_DMA_SetMemoryAddress(TXDMA(hLEDS2), (uint32_t)&ledbuffer_tx[1][0]);
-  LL_DMA_SetMemoryAddress(TXDMA(hLEDS4), (uint32_t)&ledbuffer_tx[3][0]);
+  LL_DMA_SetMemoryAddress(TXDMA(hLEDS2), (uint32_t)&g_ledbuffer_tx[1][0]);
+  LL_DMA_SetMemoryAddress(TXDMA(hLEDS4), (uint32_t)&g_ledbuffer_tx[3][0]);
 #endif
 
   LL_DMA_EnableStreamEx(TXDMA(hLEDS1));
@@ -118,11 +136,11 @@ void leds_driver_transmit(void) {
 }
 
 void leds_driver_transmit_blank(void) {
-  LL_DMA_SetMemoryAddress(TXDMA(hLEDS1), (uint32_t)&ledbuffer_blank_tx[0]);
-  LL_DMA_SetMemoryAddress(TXDMA(hLEDS3), (uint32_t)&ledbuffer_blank_tx[0]);
+  LL_DMA_SetMemoryAddress(TXDMA(hLEDS1), (uint32_t)&g_ledbuffer_blank_tx[0]);
+  LL_DMA_SetMemoryAddress(TXDMA(hLEDS3), (uint32_t)&g_ledbuffer_blank_tx[0]);
 #if FOUR_CHANNEL
-  LL_DMA_SetMemoryAddress(TXDMA(hLEDS2), (uint32_t)&ledbuffer_blank_tx[0]);
-  LL_DMA_SetMemoryAddress(TXDMA(hLEDS4), (uint32_t)&ledbuffer_blank_tx[0]);
+  LL_DMA_SetMemoryAddress(TXDMA(hLEDS2), (uint32_t)&g_ledbuffer_blank_tx[0]);
+  LL_DMA_SetMemoryAddress(TXDMA(hLEDS4), (uint32_t)&g_ledbuffer_blank_tx[0]);
 #endif
 
   LL_DMA_EnableStreamEx(TXDMA(hLEDS1));
