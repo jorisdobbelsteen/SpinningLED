@@ -95,8 +95,8 @@ void Rotation_Detected_IRQHandler(uint16_t value) {
 }
 
 void Rotation_None_IRQHandler(void) {
-  // Be dim and slow down
-  __HAL_TIM_SET_AUTORELOAD(&hTIM_PIXEL, 0xffff);
+  // Be dim and slow enough for debugging
+  __HAL_TIM_SET_AUTORELOAD(&hTIM_PIXEL, 0x1fffff);
   leds_driver_set_brightness(BRIGHTNESS_NODETECT);
 }
 
