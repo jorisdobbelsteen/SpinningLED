@@ -52,7 +52,10 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-#define FOUR_CHANNEL 1
+#ifndef FOUR_CHANNEL
+#define FOUR_CHANNEL 0
+#endif
+
 #define BRIGHTNESS_DEFAULT 0x80
 #define BRIGHTNESS_NODETECT 0x08
 /* USER CODE END EC */

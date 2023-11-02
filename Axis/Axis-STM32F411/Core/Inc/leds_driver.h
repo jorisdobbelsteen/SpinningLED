@@ -38,7 +38,7 @@ typedef struct led_pixel_column_t {
 typedef union led_data_buffer_t {
   struct {
     struct led_pixel_column_t d0;
-#ifdef FOUR_CHANNEL
+#if FOUR_CHANNEL
     struct led_pixel_column_t d90i;
     struct led_pixel_column_t d180;
     struct led_pixel_column_t d270i;

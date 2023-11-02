@@ -51,7 +51,7 @@ void leds_driver_init(void) {
 
   // Initialize g_ledbuffer_tx
   for (size_t b = 0; b != sizeof(g_ledbuffer_tx) / sizeof(*g_ledbuffer_tx); ++b) {
-    for (size_t c = 0; c != 4; ++c) {
+    for (size_t c = 0; c != sizeof(g_ledbuffer_tx->channel)/sizeof(*(g_ledbuffer_tx->channel)); ++c) {
       leds_driver_initialize_column(&g_ledbuffer_tx[b].channel[c]);
     }
   }
@@ -89,12 +89,13 @@ void leds_driver_init(void) {
 }
 
 void leds_driver_initialize_column(led_pixel_column_t* column) {
+  pixel_detail_t p = { .global = 0xE1 };
   column->sof = 0;
-  for (size_t i = 0; i < LEDS_Y; ++i) {
-    column->pixel[i] = 0x000000E1; // pretty much turn off fully...
+  for (size_t i = 0; i != LEDS_Y; ++i) {
+    column->pixel[i] = p.value; // pretty much turn off fully...
   }
   for(size_t i = 0; i != LEDS_DRIVER_EOF_PIXELS; ++i) {
-    column->eof[i] = 0x000000E1;
+    column->eof[i] = p.value;
   }
 }
 
@@ -120,7 +121,8 @@ __STATIC_INLINE void LL_DMA_EnableStreamEx(DMA_TypeDef *DMAx, uint32_t Stream) {
 }
 
 pixel_t leds_driver_get_pixel_base(void) {
-  return 0x000000E0 | (uint32_t)(leds_driver_get_brightness() >> 3);
+  pixel_detail_t p = { .global = 0xE0 | (g_brightness >> 3) };
+  return p.value;
 }
 
 uint8_t leds_driver_get_brightness(void) {

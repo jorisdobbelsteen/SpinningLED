@@ -13,6 +13,9 @@ set(CMAKE_OBJDUMP arm-none-eabi-objdump)
 set(SIZE arm-none-eabi-size)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
+# Special option for four-channel mode
+option(FOUR_CHANNEL "Enable Four-Channel mode on Axis MCU" OFF)
+
 # project settings
 project(Axis-STM32F411 C CXX ASM)
 set(CMAKE_CXX_STANDARD 17)
@@ -33,6 +36,12 @@ add_compile_options(-Wall -Wextra)
 
 # Enable assembler files preprocessing
 add_compile_options($<$<COMPILE_LANGUAGE:ASM>:-x$<SEMICOLON>assembler-with-cpp>)
+
+if (FOUR_CHANNEL)
+  add_compile_definitions(FOUR_CHANNEL=1)
+else ()
+  add_compile_definitions(FOUR_CHANNEL=0)
+endif  ()
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
     message(STATUS "Maximum optimization for speed")
