@@ -23,15 +23,25 @@
 /* USER CODE BEGIN Includes */
 #include "error_led.h"
 #include "leds_driver.h"
+#include "leds_color_pattern.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef enum program_t {
+  PROGRAM_HUE,
+  PROGRAM_RGB,
+  PROGRAM_INTERLACE,
+  PROGRAM_MAX_VALUE
+} program_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define PROGRAM_DEFAULT PROGRAM_HUE
 
 /* USER CODE END PD */
 
@@ -52,6 +62,8 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 
 volatile int requested_line;
+program_t current_program;
+void (*leds_update)(int line, led_data_buffer_t* buffer);
 
 /* USER CODE END PV */
 
@@ -85,6 +97,8 @@ void Pixel_IRQHandler(void) {
   if (rl == LEDS_Y)
     rl = 0;
   requested_line = rl;
+  // TODO: Probably this is not needed as interrupt should ensure WFE is aborted anyways...
+  __SEV();
 }
 
 void Rotation_Detected_IRQHandler(uint16_t value) {
@@ -98,6 +112,22 @@ void Rotation_None_IRQHandler(void) {
   // Be dim and slow enough for debugging
   __HAL_TIM_SET_AUTORELOAD(&hTIM_PIXEL, 0x1fffff);
   leds_driver_set_brightness(BRIGHTNESS_NODETECT);
+}
+
+static void Program_Set(program_t program) {
+  current_program = program;
+  switch(current_program) {
+    case PROGRAM_HUE: leds_update = &update_leds_hue; break;
+    case PROGRAM_RGB: leds_update = &update_leds_rgb; break;
+    case PROGRAM_INTERLACE: leds_update = &update_leds_interlace; break;
+    case PROGRAM_MAX_VALUE: Error_Handler(); break;
+  }
+}
+
+
+static void On_Mode_Button_Pressed(void) {
+  program_t next_program = current_program + 1;
+  Program_Set(next_program == PROGRAM_MAX_VALUE ? 0 : next_program);
 }
 
 /* USER CODE END 0 */
@@ -144,6 +174,8 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
+  Program_Set(PROGRAM_DEFAULT);
+
   error_led_init();
 
   HAL_TIM_IC_Start(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_DETECT);
@@ -168,11 +200,21 @@ int main(void)
     int rl = requested_line;
     if (rl != current_line) {
       current_line = rl;
-      uint16_t hue = (uint32_t)current_line * 0xffff / LEDS_Y;
-      leds_driver_update_hue(hue);
-    } else {
-      __WFE();
+
+      leds_update(current_line, leds_driver_get_next_buffer());
+
+      // TODO: Check if TOO slow here by testing requested_line again...
     }
+
+    if (EXTI->PR & MODE_BUTTON_Pin) {
+      // Mode button event triggered. Write to clear it.
+      EXTI->PR = MODE_BUTTON_Pin;
+
+      On_Mode_Button_Pressed();
+    }
+
+    __WFE();
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -235,7 +277,11 @@ static void MX_SPI1_Init(void)
 {
 
   /* USER CODE BEGIN SPI1_Init 0 */
-
+#if !FOUR_CHANNEL
+  if (hLEDS2 == SPI1 || hLEDS4 == SPI1) {
+    return;
+  }
+#endif
   /* USER CODE END SPI1_Init 0 */
 
   LL_SPI_InitTypeDef SPI_InitStruct = {0};
@@ -316,7 +362,11 @@ static void MX_SPI2_Init(void)
 {
 
   /* USER CODE BEGIN SPI2_Init 0 */
-
+#if !FOUR_CHANNEL
+  if (hLEDS2 == SPI2 || hLEDS4 == SPI2) {
+    return;
+  }
+#endif
   /* USER CODE END SPI2_Init 0 */
 
   LL_SPI_InitTypeDef SPI_InitStruct = {0};
@@ -406,7 +456,11 @@ static void MX_SPI3_Init(void)
 {
 
   /* USER CODE BEGIN SPI3_Init 0 */
-
+#if !FOUR_CHANNEL
+  if (hLEDS2 == SPI3 || hLEDS4 == SPI3) {
+    return;
+  }
+#endif
   /* USER CODE END SPI3_Init 0 */
 
   LL_SPI_InitTypeDef SPI_InitStruct = {0};
@@ -496,7 +550,11 @@ static void MX_SPI4_Init(void)
 {
 
   /* USER CODE BEGIN SPI4_Init 0 */
-
+#if !FOUR_CHANNEL
+  if (hLEDS2 == SPI4 || hLEDS4 == SPI4) {
+    return;
+  }
+#endif
   /* USER CODE END SPI4_Init 0 */
 
   LL_SPI_InitTypeDef SPI_InitStruct = {0};
@@ -962,11 +1020,11 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
-  /*Configure GPIO pin : MODEBTN_Pin */
-  GPIO_InitStruct.Pin = MODEBTN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  /*Configure GPIO pin : MODE_BUTTON_Pin */
+  GPIO_InitStruct.Pin = MODE_BUTTON_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(MODEBTN_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(MODE_BUTTON_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */

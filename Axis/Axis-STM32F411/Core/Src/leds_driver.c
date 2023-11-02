@@ -34,36 +34,7 @@ static led_data_buffer_t g_ledbuffer_tx[2];
 static led_pixel_column_t g_ledbuffer_blank_tx;
 uint8_t g_brightness = BRIGHTNESS_NODETECT;
 
-static uint32_t PickRgb(uint8_t h) {
-  const unsigned int ha = (unsigned int)h * 3;
-  const unsigned R = 24;
-  const unsigned G = 16;
-  const unsigned B = 8;
-  switch(ha >> 8) {
-    case 0: return (0xFF << R);
-    case 1: return (0xFF << G);
-    case 2: return (0xFF << B);
-    default: return 0;
-  }
-}
-
-static uint32_t HueToRgb(uint8_t h) {
-  const unsigned int ha = (unsigned int)h * 6;
-  const unsigned int x = ha & 0xFF;
-  const unsigned int nx = ~ha & 0xFF;
-  const unsigned R = 24;
-  const unsigned G = 16;
-  const unsigned B = 8;
-  switch(ha >> 8) {
-    case 0: return (0xFF << R) | (x << G);
-    case 1: return (0xFF << G) | (nx << R);
-    case 2: return (0xFF << G) | (x << B);
-    case 3: return (0xFF << B) | (nx << G);
-    case 4: return (0xFF << B) | (x << R);
-    case 5: return (0xFF << R) | (nx << B);
-    default: return 0;
-  }
-}
+static void leds_driver_initialize_column(led_pixel_column_t* column);
 
 void leds_driver_init(void) {
 #pragma GCC diagnostic push
@@ -81,25 +52,14 @@ void leds_driver_init(void) {
   // Initialize g_ledbuffer_tx
   for (size_t b = 0; b != sizeof(g_ledbuffer_tx) / sizeof(*g_ledbuffer_tx); ++b) {
     for (size_t c = 0; c != 4; ++c) {
-      g_ledbuffer_tx[b].channel[c].sof = 0;
-      // Extra clocks to ensure all leds are set
-      for(size_t i = 0; i != LEDS_DRIVER_EOF_PIXELS; ++i) {
-        g_ledbuffer_tx[b].channel[c].eof[i] = 0x000000E1;
-      }
+      leds_driver_initialize_column(&g_ledbuffer_tx[b].channel[c]);
     }
-    leds_driver_update_hue(0);
   }
+  g_ledbuffer_tx_sent = 0;
 
   // Initialize g_ledbuffer_blank_tx
-  g_ledbuffer_blank_tx.sof = 0;
-  for (size_t i = 0; i < LEDS_Y; ++i) {
-    g_ledbuffer_blank_tx.pixel[i] = 0x000000E1; // pretty much turn off fully...
-  }
-  for(size_t i = 0; i != LEDS_DRIVER_EOF_PIXELS; ++i) {
-    g_ledbuffer_blank_tx.eof[i] = 0x000000E1;
-  }
+  leds_driver_initialize_column(&g_ledbuffer_blank_tx);
 
-  g_ledbuffer_tx_sent = 0;
 
   // Prepare DMA
 #define TRANSFER_DIVIDE(peripheral, value) (LL_SPI_GetDataWidth(peripheral) == LL_SPI_DATAWIDTH_8BIT ? (value) : (value / 2))
@@ -128,28 +88,19 @@ void leds_driver_init(void) {
 #endif
 }
 
+void leds_driver_initialize_column(led_pixel_column_t* column) {
+  column->sof = 0;
+  for (size_t i = 0; i < LEDS_Y; ++i) {
+    column->pixel[i] = 0x000000E1; // pretty much turn off fully...
+  }
+  for(size_t i = 0; i != LEDS_DRIVER_EOF_PIXELS; ++i) {
+    column->eof[i] = 0x000000E1;
+  }
+}
+
 led_data_buffer_t* leds_driver_get_next_buffer(void) {
   size_t next = (g_ledbuffer_tx_sent + 1) % 2;
   return &(g_ledbuffer_tx[next]);
-}
-
-void leds_driver_update_hue(uint16_t hue) {
-  const uint32_t LEDBASE = 0x000000E0 | (g_brightness >> 3);
-
-  led_data_buffer_t* b = leds_driver_get_next_buffer();
-
-  for (size_t s = 0; s < 4; ++s) {
-    uint16_t hx = hue + s * 0x4000;
-    uint32_t* const pixel = b->channel[s].pixel;
-
-    for (size_t i = 0; i < LEDS_Y; ++i) {
-      pixel[i] =
-              //PickRgb
-              HueToRgb
-              (hx / 256) | LEDBASE;
-      hx += 48;
-    }
-  }
 }
 
 __STATIC_INLINE void LL_DMA_EnableStreamEx(DMA_TypeDef *DMAx, uint32_t Stream) {
@@ -166,6 +117,10 @@ __STATIC_INLINE void LL_DMA_EnableStreamEx(DMA_TypeDef *DMAx, uint32_t Stream) {
   }
   // Stream enable
   LL_DMA_EnableStream(DMAx, Stream);
+}
+
+pixel_t leds_driver_get_pixel_base(void) {
+  return 0x000000E0 | (uint32_t)(leds_driver_get_brightness() >> 3);
 }
 
 uint8_t leds_driver_get_brightness(void) {
