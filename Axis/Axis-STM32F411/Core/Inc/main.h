@@ -56,8 +56,12 @@ extern "C" {
 #define FOUR_CHANNEL 0
 #endif
 
+// Note, brightness is only 5 bits. Last 3 bits are ignored. Hence it is in steps of 0x08.
 #define BRIGHTNESS_DEFAULT 0x80
 #define BRIGHTNESS_NODETECT 0x08
+
+#define ROTATION_MIN_RPM 13
+
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/

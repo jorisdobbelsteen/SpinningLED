@@ -24,6 +24,7 @@
 #include "error_led.h"
 #include "leds_driver.h"
 #include "leds_color_pattern.h"
+#include "leds_image.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -33,8 +34,15 @@ typedef enum program_t {
   PROGRAM_HUE,
   PROGRAM_RGB,
   PROGRAM_INTERLACE,
+  PROGRAM_IMAGE,
   PROGRAM_MAX_VALUE
 } program_t;
+
+typedef enum rotation_status_t {
+  ROTATION_STATUS_NONE,
+  ROTATION_STATUS_SLOW,
+  ROTATION_STATUS_NORMAL
+} rotation_status_t;
 
 /* USER CODE END PTD */
 
@@ -61,9 +69,11 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-volatile int requested_line;
+volatile int requested_x;
+volatile uint16_t rotation_max_value;
+volatile rotation_status_t rotation_status;
 program_t current_program;
-void (*leds_update)(int line, led_data_buffer_t* buffer);
+void (*leds_update)(int x, led_data_buffer_t* buffer);
 
 /* USER CODE END PV */
 
@@ -91,12 +101,13 @@ void Pixel_IRQHandler(void) {
   // SPI output
   leds_driver_transmit();
 
-  // Increment current line counter
-  // NOTE: requested_line is volatile, so ensure there is only a single read & write
-  int rl = requested_line + 1;
-  if (rl == LEDS_Y)
-    rl = 0;
-  requested_line = rl;
+  // Increment current x (LED column) counter
+  // NOTE: requested_x is volatile, so ensure there is only a single read & write
+  int rx = requested_x + 1;
+  if (rx == LEDS_X)
+    rx = 0;
+  requested_x = rx;
+
   // TODO: Probably this is not needed as interrupt should ensure WFE is aborted anyways...
   __SEV();
 }
@@ -104,14 +115,15 @@ void Pixel_IRQHandler(void) {
 void Rotation_Detected_IRQHandler(uint16_t value) {
   // Align value to initial location
   __HAL_TIM_SET_AUTORELOAD(&hTIM_PIXEL, value);
-  requested_line = 0;
-  leds_driver_set_brightness(BRIGHTNESS_DEFAULT);
+  requested_x = 0;
+  // Keep low brightness to make it easier on the eyes
+  rotation_status = value < rotation_max_value ? ROTATION_STATUS_NORMAL : ROTATION_STATUS_SLOW;
 }
 
 void Rotation_None_IRQHandler(void) {
   // Be dim and slow enough for debugging
   __HAL_TIM_SET_AUTORELOAD(&hTIM_PIXEL, 0x1fffff);
-  leds_driver_set_brightness(BRIGHTNESS_NODETECT);
+  rotation_status = ROTATION_STATUS_NONE;
 }
 
 static void Program_Set(program_t program) {
@@ -120,6 +132,7 @@ static void Program_Set(program_t program) {
     case PROGRAM_HUE: leds_update = &update_leds_hue; break;
     case PROGRAM_RGB: leds_update = &update_leds_rgb; break;
     case PROGRAM_INTERLACE: leds_update = &update_leds_interlace; break;
+    case PROGRAM_IMAGE: leds_update = &update_leds_image; break;
     case PROGRAM_MAX_VALUE: Error_Handler(); break;
   }
 }
@@ -178,13 +191,20 @@ int main(void)
 
   error_led_init();
 
-  HAL_TIM_IC_Start(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_DETECT);
-  HAL_TIM_PWM_Start(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_LED);
-  __HAL_TIM_SET_COMPARE(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_LED,
-                        SystemCoreClock * ROTATION_LED_PULSE_MS / hTIM_ROTATION.Init.Prescaler / 1000);
-  HAL_TIM_Base_Start_IT(&hTIM_ROTATION);
+  // This assumes all timers run at the HCLK frequency (even on the slower bus).
+  {
+    int rotation_ticks_per_sec = SystemCoreClock / (hTIM_ROTATION.Init.Prescaler+1);
+    rotation_max_value = rotation_ticks_per_sec / ROTATION_MIN_RPM;
+
+    HAL_TIM_IC_Start(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_DETECT);
+    HAL_TIM_PWM_Start(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_LED);
+    __HAL_TIM_SET_COMPARE(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_LED,
+                          ROTATION_LED_PULSE_MS * rotation_ticks_per_sec / 1000);
+    HAL_TIM_Base_Start_IT(&hTIM_ROTATION);
+  }
 
   leds_driver_init();
+  update_leds_image_init();
 
   // Start pixel timer
   HAL_TIM_Base_Start_IT(&hTIM_PIXEL);
@@ -194,27 +214,67 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  int current_line = -1;
+  int current_x = -1;
+  int late = 0;
   while (1) {
     // Check if current line has changed. If so, render new color onto it
-    int rl = requested_line;
-    if (rl != current_line) {
-      current_line = rl;
+    int rx = requested_x;
+    if (rx != current_x) {
+      // Request pixel update (priority!)
 
-      leds_update(current_line, leds_driver_get_next_buffer());
+      // Performance measurement, start timing
+      uint32_t start_tick = SysTick->VAL;
 
-      // TODO: Check if TOO slow here by testing requested_line again...
+      current_x = rx;
+      leds_update(current_x, leds_driver_get_next_buffer());
+
+      // Performance measurement, end timing
+     uint32_t end_tick = SysTick->VAL;
+
+     // Check if we are late, either by interrupt or systick
+      if (rx != requested_x) {
+        // Definitely late, mark this event!
+        late++;
+      } else {
+        // Calculate using systick counter for 16 rpm
+        uint32_t ticks;
+        if (start_tick > end_tick) {
+          ticks = start_tick - end_tick;
+        } else {
+          ticks = start_tick - end_tick + SysTick->LOAD;
+        }
+
+        if (ticks >= SystemCoreClock / (LEDS_X * 26)) {
+          late++;
+        }
+      }
     }
 
+    // Update brightness of LEDs
+    leds_driver_set_brightness(rotation_status == ROTATION_STATUS_NORMAL
+                               ? BRIGHTNESS_DEFAULT : BRIGHTNESS_NODETECT);
+
+    // Update error led based on various status
+    if (late) {
+      error_led_set(AXIS_ERROR_LATE);
+    } else {
+      if (rotation_status == ROTATION_STATUS_NONE) {
+        error_led_set(AXIS_ERROR_NO_ROTATION);
+      } else {
+        error_led_set(AXIS_ERROR_OK);
+      }
+    }
+
+    // Check for mode button pressed
     if (EXTI->PR & MODE_BUTTON_Pin) {
       // Mode button event triggered. Write to clear it.
       EXTI->PR = MODE_BUTTON_Pin;
 
       On_Mode_Button_Pressed();
+      late = 0;
     }
 
     __WFE();
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

@@ -5,17 +5,17 @@
 #include "leds_color_pattern.h"
 #include "main.h"
 
-static inline void update_pattern_column(uint16_t lined, led_pixel_column_t* col, pixel_t(*function)(uint8_t), const pixel_t pixel_base) {
+static inline void update_pattern_column(uint16_t x, led_pixel_column_t* col, pixel_t(*function)(uint8_t), const pixel_t pixel_base) {
   uint32_t* const pixel = col->pixel;
 
-  for (size_t i = 0; i < LEDS_Y; ++i) {
-    pixel[i] = function(lined / 256) | pixel_base;
-    lined += 48;
+  for (size_t y = 0; y < LEDS_Y; ++y) {
+    pixel[y] = function(x / 256) | pixel_base;
+    x += 72; // staggered pattern
   }
 }
 
-static void update_pattern(int line, led_data_buffer_t* buffer, pixel_t(*function)(uint8_t)) {
-  uint16_t hue = line * 0xffff / LEDS_Y;
+static void update_pattern(int x, led_data_buffer_t* buffer, pixel_t(*function)(uint8_t)) {
+  uint16_t hue = x * 0xffff / LEDS_X;
 
   const pixel_t pixel_base = leds_driver_get_pixel_base();
 
@@ -45,8 +45,8 @@ static pixel_t HueToRgb(uint8_t h) {
   }
 }
 
-void update_leds_hue(int line, led_data_buffer_t* buffer) {
-  update_pattern(line, buffer, &HueToRgb);
+void update_leds_hue(int x, led_data_buffer_t* buffer) {
+  update_pattern(x, buffer, &HueToRgb);
 }
 
 
@@ -61,12 +61,12 @@ static pixel_t PickRgb(uint8_t h) {
   }
 }
 
-void update_leds_rgb(int line, led_data_buffer_t* buffer) {
-  update_pattern(line, buffer, &PickRgb);
+void update_leds_rgb(int x, led_data_buffer_t* buffer) {
+  update_pattern(x, buffer, &PickRgb);
 }
 
-void update_leds_interlace(int line, led_data_buffer_t* buffer) {
-  (void)line;
+void update_leds_interlace(int x, led_data_buffer_t* buffer) {
+  (void)x;
   const pixel_t base = leds_driver_get_pixel_base();
 
   buffer->d0.pixel[0] = buffer->d0.pixel[LEDS_Y - 1] = pixel_rgbb(0xff, 0, 0, base);

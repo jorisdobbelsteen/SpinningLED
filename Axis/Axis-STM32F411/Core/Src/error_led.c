@@ -6,30 +6,37 @@
 #include <stdint.h>
 #include "main.h"
 
-uint16_t error_led_sequence[10];
+static axis_error_t error_led_current;
+static uint16_t error_led_sequence[10];
 
 extern TIM_HandleTypeDef htim3;
 
 const uint8_t error_sequence_const[AXIS_ERROR_MAX_VALUE][8] = {
         /* NO_ERROR    */ {0,0,0,0,0,0,0,0},
         /* FATAL       */ {255,255,255,0,0,255,255,255},
-        /* UNDEFINED   */ {255,255,0,128,128,128,128,128},
-        /* NO_ROTATION */ {128,0,128,0,128,0,128,0},
+        /* INIT        */ {224,224,224,224,224, 224,224,224},
+        /* NO_ROTATION */ {64,0,64,0,64,0,64,0},
+        /* LATE        */ {128,128,0,0,128,128,0,0},
 };
 
 void error_led_init(void) {
-  error_led_sequence[8] = 0;
-  error_led_sequence[9] = 0;
-  error_led_set(AXIS_ERROR_UNDEFINED);
+  for(size_t i = 0; i != sizeof(error_led_sequence)/sizeof(*error_led_sequence); ++i) {
+    error_led_sequence[i] = 0;
+  }
+  error_led_set(AXIS_ERROR_INIT);
   HAL_TIM_PWM_Start_DMA(&hTIM_ERROR, TIM_ERROR_CHANNEL_LED, (uint32_t*)error_led_sequence, 10);
 }
 
 void error_led_set(axis_error_t error) {
+  if (error == error_led_current) {
+    return;
+  }
   if (error >= AXIS_ERROR_MAX_VALUE) {
     error = AXIS_ERROR_FATAL;
   }
-  for(size_t i = 0; i < 8; ++i) {
+  for(size_t i = 0; i != sizeof(error_sequence_const[0])/sizeof(error_sequence_const[0][0]); ++i) {
     uint16_t v = error_sequence_const[error][i];
     error_led_sequence[i] = v | (v << 8);
   }
+  error_led_current = error;
 }

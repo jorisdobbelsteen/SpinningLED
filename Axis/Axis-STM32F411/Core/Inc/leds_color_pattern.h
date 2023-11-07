@@ -7,8 +7,8 @@
 
 #include "leds_driver.h"
 
-void update_leds_hue(int line, led_data_buffer_t* buffer);
-void update_leds_rgb(int line, led_data_buffer_t* buffer);
-void update_leds_interlace(int line, led_data_buffer_t* buffer);
+void update_leds_hue(int x, led_data_buffer_t* buffer);
+void update_leds_rgb(int x, led_data_buffer_t* buffer);
+void update_leds_interlace(int x, led_data_buffer_t* buffer);
 
 #endif //AXIS_STM32F411_LEDS_COLOR_PATTERN_H

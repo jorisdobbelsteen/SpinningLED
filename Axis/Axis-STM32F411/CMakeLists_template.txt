@@ -56,6 +56,9 @@ else ()
     add_compile_options(-Og -g)
 endif ()
 
+# Custom script
+include("images.cmake")
+
 include_directories(${includes})
 
 add_definitions(${defines})
@@ -68,7 +71,7 @@ add_link_options(-Wl,-gc-sections,--print-memory-usage,-Map=$${PROJECT_BINARY_DI
 add_link_options(-mcpu=${mcpu} -mthumb -mthumb-interwork)
 add_link_options(-T $${LINKER_SCRIPT})
 
-add_executable($${PROJECT_NAME}.elf $${SOURCES} $${LINKER_SCRIPT})
+add_executable($${PROJECT_NAME}.elf $${SOURCES} $${LINKER_SCRIPT} ${IMAGE_HEADERS})
 target_compile_options($${PROJECT_NAME}.elf PRIVATE -save-temps=obj)
 
 set(HEX_FILE $${PROJECT_BINARY_DIR}/$${PROJECT_NAME}.hex)
