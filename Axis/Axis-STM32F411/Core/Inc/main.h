@@ -75,7 +75,8 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+enum axis_program_t;
+void Program_Set(enum axis_program_t program);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -100,10 +101,16 @@ void Error_Handler(void);
 #define ROTATION_LED_PULSE_MS 5
 #define LEDS_X 400
 #define LEDS_Y 57
+#define SPI5_TXDMA DMA2
+#define SPI5_RXDMA DMA2
+#define SPI5_RXDMA_STREAM LL_DMA_STREAM_3
+#define SPI5_TXDMA_STREAM LL_DMA_STREAM_4
 #define USART_TX_Pin GPIO_PIN_2
 #define USART_TX_GPIO_Port GPIOA
 #define USART_RX_Pin GPIO_PIN_3
 #define USART_RX_GPIO_Port GPIOA
+#define SPI5_NSS_Pin GPIO_PIN_1
+#define SPI5_NSS_GPIO_Port GPIOB
 #define MODE_BUTTON_Pin GPIO_PIN_8
 #define MODE_BUTTON_GPIO_Port GPIOC
 #define ERROR_LED_Pin GPIO_PIN_9
@@ -121,6 +128,7 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 #define TXDMA(peripheral) peripheral##_TXDMA , peripheral##_TXDMA_STREAM
+#define RXDMA(peripheral) peripheral##_RXDMA , peripheral##_RXDMA_STREAM
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

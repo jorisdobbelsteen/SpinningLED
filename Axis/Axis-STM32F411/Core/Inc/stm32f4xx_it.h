@@ -61,7 +61,7 @@ void TIM2_IRQHandler(void);
 void DMA2_Stream3_IRQHandler(void);
 void DMA2_Stream4_IRQHandler(void);
 /* USER CODE BEGIN EFP */
-
+void EXTI1_IRQHandler(void);
 /* USER CODE END EFP */
 
 #ifdef __cplusplus

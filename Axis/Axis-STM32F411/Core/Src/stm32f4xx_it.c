@@ -22,6 +22,7 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "error_led.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,6 +51,7 @@ static int rotation_detected_prev = 0;
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
 void Pixel_IRQHandler(void);
+void control_if_IRQHandler(void);
 void Rotation_Detected_IRQHandler(uint16_t value);
 void Rotation_None_IRQHandler(void);
 /* USER CODE END PFP */
@@ -91,7 +93,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  error_led_set(AXIS_ERROR_FATAL_FAULT);
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
@@ -301,5 +303,9 @@ void DMA2_Stream4_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
+void EXTI1_IRQHandler(void) {
+  _Static_assert(SPI5_NSS_Pin == GPIO_PIN_1);
+  __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_1);
+  control_if_IRQHandler();
+}
 /* USER CODE END 1 */

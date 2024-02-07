@@ -21,6 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
+#include "../../../shared/packet.h"
+#include "control_if.h"
 #include "error_led.h"
 #include "leds_driver.h"
 #include "leds_color_pattern.h"
@@ -29,14 +32,6 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
-typedef enum program_t {
-  PROGRAM_HUE,
-  PROGRAM_RGB,
-  PROGRAM_INTERLACE,
-  PROGRAM_IMAGE,
-  PROGRAM_MAX_VALUE
-} program_t;
 
 typedef enum rotation_status_t {
   ROTATION_STATUS_NONE,
@@ -49,7 +44,7 @@ typedef enum rotation_status_t {
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define PROGRAM_DEFAULT PROGRAM_HUE
+#define PROGRAM_DEFAULT AXIS_PROGRAM_IMAGE_RGB565
 
 /* USER CODE END PD */
 
@@ -72,8 +67,8 @@ UART_HandleTypeDef huart2;
 volatile int requested_x;
 volatile uint16_t rotation_max_value;
 volatile rotation_status_t rotation_status;
-program_t current_program;
-void (*leds_update)(int x, led_data_buffer_t* buffer);
+axis_program_t current_program;
+void (*leds_update)(int x, led_data_buffer_t* buffer) = NULL;
 
 /* USER CODE END PV */
 
@@ -126,21 +121,31 @@ void Rotation_None_IRQHandler(void) {
   rotation_status = ROTATION_STATUS_NONE;
 }
 
-static void Program_Set(program_t program) {
-  current_program = program;
-  switch(current_program) {
-    case PROGRAM_HUE: leds_update = &update_leds_hue; break;
-    case PROGRAM_RGB: leds_update = &update_leds_rgb; break;
-    case PROGRAM_INTERLACE: leds_update = &update_leds_interlace; break;
-    case PROGRAM_IMAGE: leds_update = &update_leds_image; break;
-    case PROGRAM_MAX_VALUE: Error_Handler(); break;
+static void Program_Set_I(enum axis_program_t program, bool safe) {
+  switch(program) {
+    case AXIS_PROGRAM_HUE: leds_update = &update_leds_hue; break;
+    case AXIS_PROGRAM_RGB: leds_update = &update_leds_rgb; break;
+    case AXIS_PROGRAM_INTERLACE: leds_update = &update_leds_interlace; break;
+    case AXIS_PROGRAM_IMAGE_RGB565: leds_update = &update_leds_image; break;
+    default: /* NOTICE: ___ RETURN ___ i.s.o. break SO code below is NOT called! */
+      if (safe) Program_Set_I(PROGRAM_DEFAULT, false); else Error_Handler(); return;
   }
+  current_program = program;
+  control_if_set_program(program);
 }
 
+void Program_Set(enum axis_program_t program) {
+  Program_Set_I(program, true);
+}
 
 static void On_Mode_Button_Pressed(void) {
-  program_t next_program = current_program + 1;
-  Program_Set(next_program == PROGRAM_MAX_VALUE ? 0 : next_program);
+  switch(current_program) {
+    case AXIS_PROGRAM_HUE: Program_Set(AXIS_PROGRAM_RGB);; break;
+    case AXIS_PROGRAM_RGB: Program_Set(AXIS_PROGRAM_INTERLACE);; break;
+    case AXIS_PROGRAM_INTERLACE: Program_Set(AXIS_PROGRAM_IMAGE_RGB565);; break;
+    case AXIS_PROGRAM_IMAGE_RGB565: Program_Set(AXIS_PROGRAM_HUE);; break;
+    default: Program_Set(PROGRAM_DEFAULT); break;
+  }
 }
 
 /* USER CODE END 0 */
@@ -187,13 +192,20 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
-  Program_Set(PROGRAM_DEFAULT);
-
+  // Indicate the device is 'alive'...
   error_led_init();
+
+  Program_Set(PROGRAM_DEFAULT);
+  if (leds_update == NULL) {
+    Error_Handler();
+  }
+
+  control_if_init();
+  control_if_set_program(current_program);
 
   // This assumes all timers run at the HCLK frequency (even on the slower bus).
   {
-    int rotation_ticks_per_sec = SystemCoreClock / (hTIM_ROTATION.Init.Prescaler+1);
+    uint32_t rotation_ticks_per_sec = SystemCoreClock / (hTIM_ROTATION.Init.Prescaler+1);
     rotation_max_value = rotation_ticks_per_sec / ROTATION_MIN_RPM;
 
     HAL_TIM_IC_Start(&hTIM_ROTATION, TIM_ROTATION_CHANNEL_DETECT);
@@ -273,6 +285,8 @@ int main(void)
       On_Mode_Button_Pressed();
       late = 0;
     }
+
+    control_if_process();
 
     __WFE();
     /* USER CODE END WHILE */
@@ -704,7 +718,7 @@ static void MX_SPI5_Init(void)
 {
 
   /* USER CODE BEGIN SPI5_Init 0 */
-
+  LL_EXTI_InitTypeDef EXTI_InitStruct = {0};
   /* USER CODE END SPI5_Init 0 */
 
   LL_SPI_InitTypeDef SPI_InitStruct = {0};
@@ -718,6 +732,7 @@ static void MX_SPI5_Init(void)
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
   /**SPI5 GPIO Configuration
   PB0   ------> SPI5_SCK
+  PB1   ------> SPI5_NSS
   PA10   ------> SPI5_MOSI
   PA12   ------> SPI5_MISO
   */
@@ -726,6 +741,14 @@ static void MX_SPI5_Init(void)
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_HIGH;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Alternate = LL_GPIO_AF_6;
+  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_1;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
   GPIO_InitStruct.Alternate = LL_GPIO_AF_6;
   LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
@@ -779,6 +802,30 @@ static void MX_SPI5_Init(void)
 
   /* USER CODE BEGIN SPI5_Init 1 */
 
+  // Assume we can use GPIO_PIN_n instead of LL_EXTI_LINE_n
+  _Static_assert(LL_EXTI_LINE_1 == GPIO_PIN_1);
+  _Static_assert(LL_EXTI_LINE_15 == GPIO_PIN_15);
+  EXTI_InitStruct.Line_0_31 = SPI5_NSS_Pin;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  // Trigger at end of transaction. NSS is active-low.
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+
+  // TODO: Fix this to a function to select the port. But at least warn if its differently
+  //       configured for now.
+  _Static_assert(SPI5_NSS_GPIO_Port == GPIOB);
+  _Static_assert(SPI5_NSS_Pin == GPIO_PIN_1);
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTB, LL_SYSCFG_EXTI_LINE1);
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  // This is a quite terrible back to keep reusing code generated by CubeMX...
+  (void) SPI_InitStruct;
+  void MX_SPI5_SPI_Only_Init(void);
+  MX_SPI5_SPI_Only_Init();
+}
+void MX_SPI5_SPI_Only_Init(void) {
+  LL_SPI_InitTypeDef SPI_InitStruct = {0};
+
   /* USER CODE END SPI5_Init 1 */
   /* SPI5 parameter configuration*/
   SPI_InitStruct.TransferDirection = LL_SPI_FULL_DUPLEX;
@@ -786,7 +833,7 @@ static void MX_SPI5_Init(void)
   SPI_InitStruct.DataWidth = LL_SPI_DATAWIDTH_8BIT;
   SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_LOW;
   SPI_InitStruct.ClockPhase = LL_SPI_PHASE_1EDGE;
-  SPI_InitStruct.NSS = LL_SPI_NSS_SOFT;
+  SPI_InitStruct.NSS = LL_SPI_NSS_HARD_INPUT;
   SPI_InitStruct.BitOrder = LL_SPI_MSB_FIRST;
   SPI_InitStruct.CRCCalculation = LL_SPI_CRCCALCULATION_DISABLE;
   SPI_InitStruct.CRCPoly = 10;
@@ -1103,7 +1150,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  error_led_set(AXIS_ERROR_FATAL);
+  error_led_set(AXIS_ERROR_FATAL_ERROR);
   while (1)
   {
   }

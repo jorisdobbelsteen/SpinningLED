@@ -28,6 +28,7 @@
 
 #include "leds_driver.h"
 #include "main.h"
+#include "dma_support.h"
 
 volatile size_t g_ledbuffer_tx_sent = 0;
 static led_data_buffer_t g_ledbuffer_tx[2];
@@ -102,22 +103,6 @@ void leds_driver_initialize_column(led_pixel_column_t* column) {
 led_data_buffer_t* leds_driver_get_next_buffer(void) {
   size_t next = (g_ledbuffer_tx_sent + 1) % 2;
   return &(g_ledbuffer_tx[next]);
-}
-
-__STATIC_INLINE void LL_DMA_EnableStreamEx(DMA_TypeDef *DMAx, uint32_t Stream) {
-  // Interrupt clear
-  switch (Stream) {
-    case LL_DMA_STREAM_0: DMAx->LIFCR = 0x3D << 0; break;
-    case LL_DMA_STREAM_1: DMAx->LIFCR = 0x3D << 6; break;
-    case LL_DMA_STREAM_2: DMAx->LIFCR = 0x3D << 16; break;
-    case LL_DMA_STREAM_3: DMAx->LIFCR = 0x3D << 22; break;
-    case LL_DMA_STREAM_4: DMAx->HIFCR = 0x3D << 0; break;
-    case LL_DMA_STREAM_5: DMAx->HIFCR = 0x3D << 6; break;
-    case LL_DMA_STREAM_6: DMAx->HIFCR = 0x3D << 16; break;
-    case LL_DMA_STREAM_7: DMAx->HIFCR = 0x3D << 22; break;
-  }
-  // Stream enable
-  LL_DMA_EnableStream(DMAx, Stream);
 }
 
 pixel_t leds_driver_get_pixel_base(void) {
